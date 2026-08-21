@@ -216,3 +216,17 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ---------------------------------------------------------------------------
+# Code do protoc sinh ra từ protos/*.proto
+# Không commit để tránh xung đột merge; sau khi clone thì chạy: make proto
+# (Trường phái khác chọn commit để CI không cần grpcio-tools - cả hai đều ổn,
+#  quan trọng là cả team thống nhất.)
+# ---------------------------------------------------------------------------
+app/infra/grpc/generated/*_pb2.py
+app/infra/grpc/generated/*_pb2.pyi
+app/infra/grpc/generated/*_pb2_grpc.py
+
+# SQLite dùng khi thử nghiệm local
+*.db
+*.sqlite3
