@@ -77,9 +77,9 @@ curl -f http://localhost:8080/health
 docker compose logs -f app
 ```
 
-Dockerfile build nhiều giai đoạn, bật CGO cho SQLite, chạy bằng user không phải root. `.env` và dữ liệu DB không được đưa vào image. Compose truyền biến từ `.env`, cố định DB trong `/data/messages.db` và lưu vào named volume `messages`. Chỉ chạy một replica. Đổi port ngoài bằng `APP_PORT=9000 docker compose up -d --build`.
+Dockerfile build nhiều giai đoạn, bật CGO cho SQLite, chạy bằng user không phải root. `.env` và dữ liệu DB không được đưa vào image. Compose truyền các biến app cần từ `.env`, cố định DB trong `/data/messages.db` và lưu vào named volume `messages`. Chỉ chạy một replica. Đổi port ngoài bằng `APP_PORT=9000 docker compose up -d --build`.
 
-Cập nhật app: `docker compose up -d --build`. Dừng: `docker compose down`. Named volume vẫn giữ dữ liệu; `docker compose down -v` sẽ xóa dữ liệu SQLite. Đặt HTTPS reverse proxy trước API khi deploy Internet.
+Cập nhật app: `docker compose up -d --build`. Dừng: `docker compose down`. Named volume vẫn giữ dữ liệu; `docker compose down -v` sẽ xóa dữ liệu SQLite. Dùng Cloudflare Tunnel bên dưới hoặc đặt HTTPS reverse proxy trước API khi deploy Internet.
 
 Nếu chỉ dùng Docker:
 
@@ -92,3 +92,28 @@ docker run -d --name content-telegram --restart unless-stopped \
 ```
 
 Với môi trường build qua HTTPS proxy có CA riêng, dùng BuildKit secret chứa CA bundle tin cậy: `docker build --secret id=proxy_ca,src=/path/to/ca-bundle.pem -t content-telegram:local .`. Không tắt kiểm tra TLS và không đưa token vào build arguments.
+
+
+## Deploy qua Cloudflare Tunnel
+
+1. Trong Cloudflare Zero Trust, vào **Networks → Tunnels**, tạo tunnel loại **Cloudflared** (remotely managed). Sao chép tunnel token vào `CLOUDFLARE_TUNNEL_TOKEN` trong `.env`. Giữ nguyên các key API/Telegram đã cấu hình.
+2. Trong phần **Public Hostname / Published application route** của tunnel, chọn hostname của bạn, ví dụ `notify.example.com`, rồi cấu hình service **HTTP** với URL **`app:8080`** (đầy đủ là `http://app:8080`). Đây là tên service Docker; không dùng `localhost` vì connector chạy trong container riêng.
+3. Khởi chạy:
+
+```sh
+docker compose --profile tunnel up -d --build
+docker compose logs -f cloudflared
+```
+
+Gọi API qua hostname đã cấu hình:
+
+```sh
+curl https://notify.example.com/api/v1/messages \
+  -H 'Content-Type: application/json' \
+  -H "X-API-Key: $API_KEY" \
+  -d '{"content":"Gửi qua Cloudflare Tunnel"}'
+```
+
+Tunnel cung cấp HTTPS công khai; không cần mở inbound port trên máy deploy. App vẫn kiểm tra `X-API-Key`. Port debug trên host chỉ bind `127.0.0.1` để kiểm tra local; truy cập từ xa đi qua tunnel. Chỉ container cloudflared nhận tunnel token; container app chỉ nhận key API/Telegram. `.env` không được nhúng vào image.
+
+Cập nhật: `docker compose --profile tunnel up -d --build`. Dừng: `docker compose --profile tunnel down`. Tunnel cần outbound DNS và kết nối Cloudflare trên port 7844 (UDP/QUIC hoặc TCP/HTTP2); nếu firewall chặn UDP, đặt command cloudflared thành `["tunnel", "--no-autoupdate", "--protocol", "http2", "run"]` và cho phép TCP 7844. Chưa có tunnel token/hostname thật thì chỉ có thể kiểm tra cấu hình, chưa xác nhận được truy cập công khai.
