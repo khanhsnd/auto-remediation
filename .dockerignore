@@ -1,0 +1,11 @@
+.git
+.env
+.env.*
+!.env.example
+data
+bin
+*.db
+*.db-shm
+*.db-wal
+*.sqlite*
+*.log
